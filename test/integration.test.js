@@ -1,23 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { request as httpRequest } from 'node:http';
 import { mkdtemp, chmod, copyFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 test('companion serves site and routes agent, observer, pruning and access checks', { timeout: 20000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'murmur-test-')); const port = 43000 + Math.floor(Math.random() * 1000);
+  const testToken = '0123456789abcdef0123456789abcdef';
   const executable = join(dir, 'mock-codex.mjs'); await copyFile(resolve('fixtures/mock-codex.js'), executable); await chmod(executable, 0o755);
-  const child = spawn(process.execPath, ['server/index.js'], { env: { ...process.env, MURMUR_PORT: String(port), MURMUR_TOKEN: 'test-secret', MURMUR_DATA: join(dir, 'room.json'), MURMUR_CODEX: executable }, stdio: 'ignore' });
+  const child = spawn(process.execPath, ['server/index.js'], { env: { ...process.env, MURMUR_PORT: String(port), MURMUR_TOKEN: testToken, MURMUR_DATA: join(dir, 'room.json'), MURMUR_CODEX: executable, MURMUR_PUBLIC_HOST: 'room.example.test', MURMUR_ALLOWED_ORIGIN: 'https://cargo-culture.github.io' }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}`;
   const request = async (path, body, headers = {}) => {
-    const response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST', headers: { 'X-Murmur-Token': 'test-secret', 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST', headers: { 'X-Murmur-Token': testToken, 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
     return [response.status, response.headers.get('content-type'), await response.text()];
   };
   try {
     let ready = false; for (let i = 0; i < 60; i++) { try { await fetch(base + '/health'); ready = true; break; } catch { await new Promise(r => setTimeout(r, 50)); } } assert.ok(ready);
     assert.match((await request('/'))[2], /Murmur/);
     assert.equal((await request('/api/state', undefined, { Origin: 'https://evil.example' }))[0], 403);
+    const hostStatus = host => new Promise((resolve, reject) => { const req = httpRequest(base + '/api/state', { headers: { Host: host, Origin: 'https://cargo-culture.github.io', 'X-Murmur-Token': testToken } }, res => { res.resume(); resolve(res.statusCode); }); req.on('error', reject); req.end(); });
+    assert.equal(await hostStatus('room.example.test'), 200);
+    assert.equal(await hostStatus('attacker.example'), 403);
     assert.equal((await request('/api/state', undefined, { 'X-Murmur-Token': 'wrong' }))[0], 401);
     assert.equal((await request('/api/agents', { name: 'Ada', seed: 123 }))[0], 200);
     assert.equal((await request('/api/message', { content: 'Hello Ada' }))[0], 200);
