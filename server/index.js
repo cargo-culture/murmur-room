@@ -12,6 +12,10 @@ const host = '127.0.0.1';
 const port = Number(process.env.MURMUR_PORT || 4317);
 const token = process.env.MURMUR_TOKEN || randomBytes(24).toString('hex');
 const allowed = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, ...(process.env.MURMUR_ALLOWED_ORIGIN || '').split(',').map(x => x.trim()).filter(Boolean)]);
+const publicHost = process.env.MURMUR_PUBLIC_HOST?.trim().toLowerCase();
+if (publicHost && (!/^[a-z0-9.-]+$/.test(publicHost) || publicHost.includes('..'))) throw new Error('MURMUR_PUBLIC_HOST must be a hostname without scheme or path.');
+if (publicHost && (!process.env.MURMUR_TOKEN || process.env.MURMUR_TOKEN.length < 32)) throw new Error('Remote mode requires a persistent MURMUR_TOKEN of at least 32 characters.');
+const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, ...(publicHost ? [publicHost] : [])]);
 const engine = codexReply;
 let state = initialState(), busy = false, controller = null, timer = null, observerTimer = null, observerBusy = false, lastObserved = '';
 try { state = { ...initialState(), ...JSON.parse(await readFile(dataPath, 'utf8')) }; state.settings.auto = false; } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -60,7 +64,7 @@ function demand(test, message) { if (!test) throw Object.assign(new Error(messag
 async function handle(req, res) {
   const origin = req.headers.origin;
   if (origin && !allowed.has(origin)) return json(res, 403, { error: 'Origin not allowed. Set MURMUR_ALLOWED_ORIGIN to your exact Pages origin.' });
-  if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(req.headers.host)) return json(res, 403, { error: 'Host not allowed.' });
+  if (!allowedHosts.has(req.headers.host?.toLowerCase())) return json(res, 403, { error: 'Host not allowed.' });
   if (origin) { res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Murmur-Token'); res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); res.setHeader('Access-Control-Allow-Private-Network', 'true'); }
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   const path = new URL(req.url, `http://${host}:${port}`).pathname;
@@ -109,6 +113,6 @@ let activeAgentId = null;
 const server = http.createServer((req, res) => handle(req, res).catch(e => json(res, e.status || 500, { error: e.message })));
 server.listen(port, host, () => {
   console.log(`Murmur Room at http://${host}:${port}`);
-  console.log(`Room token: ${token}`);
+  console.log(publicHost ? 'Room token: configured privately' : `Room token: ${token}`);
   console.log(`Allowed origins: ${[...allowed].join(', ')}`);
 });
