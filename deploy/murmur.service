@@ -1,0 +1,17 @@
+[Unit]
+Description=Murmur Room subscription companion
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/murmur-room
+EnvironmentFile=%h/.config/murmur-room/env
+ExecStart=/usr/bin/env node %h/murmur-room/server/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
