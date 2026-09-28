@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, chmod, rm } from 'node:fs/promises';
+import { mkdtemp, chmod, copyFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 test('companion serves site and routes agent, observer, pruning and access checks', { timeout: 20000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'murmur-test-')); const port = 43000 + Math.floor(Math.random() * 1000);
-  const executable = resolve('fixtures/mock-codex.js'); await chmod(executable, 0o755);
+  const executable = join(dir, 'mock-codex.mjs'); await copyFile(resolve('fixtures/mock-codex.js'), executable); await chmod(executable, 0o755);
   const child = spawn(process.execPath, ['server/index.js'], { env: { ...process.env, MURMUR_PORT: String(port), MURMUR_TOKEN: 'test-secret', MURMUR_DATA: join(dir, 'room.json'), MURMUR_CODEX: executable }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}`;
   const request = async (path, body, headers = {}) => {
