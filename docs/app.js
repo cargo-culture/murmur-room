@@ -48,7 +48,7 @@ async function refresh(force = false) {
 }
 $('connect-form').onsubmit = event => { event.preventDefault();
   const value = $('endpoint').value.trim().replace(/\/+$/, '');
-  if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(value)) return error('The companion must use an http://localhost or http://127.0.0.1 URL.');
+  if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(value) && !/^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(value)) return error('Use a loopback HTTP URL or an HTTPS server hostname, without a path.');
   endpoint = value; token = $('token').value.trim(); sessionStorage.setItem('murmur-endpoint', endpoint); sessionStorage.setItem('murmur-token', token); refresh(true);
 };
 $('add-form').onsubmit = async event => { event.preventDefault(); const name = $('agent-name').value.trim(); if (!name) return; await action('/api/agents', { name }); $('agent-name').value = ''; };
